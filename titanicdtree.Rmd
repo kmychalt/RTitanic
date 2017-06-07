@@ -1,0 +1,113 @@
+---
+title: "Titanic Decision Tree Notebook"
+output: html_notebook
+---
+
+Set working directory and import files.
+
+```{r}
+setwd("~/RStudio/Titanic")
+library(readr)
+train <- read_csv("~/RStudio/Titanic/train.csv")
+library(readr)
+test <- read_csv("~/RStudio/Titanic/test.csv")
+```
+
+import rpart, or Recursive Partitioning and Regression Trees, and uses CART decision tree algorithm.
+
+```{r}
+library(rpart)
+```
+
+Variable of interest - Survived
+Variables used for prediction - Pclass, Sex, Age, SibSp, Parch, Fare, Embarked
+Dataset - train
+For output, we just want 1 or 0, so "class" is fine. A different method could be used for a decimal, 
+or continuous variable.
+
+```{r}
+fit <- rpart(Survived ~ Pclass + Sex + Age + SibSp + Parch + Fare + Embarked,
+               data=train,
+               method="class")
+```
+
+To examine the tree, we use:
+
+```{r}
+plot(fit)
+text(fit)
+```
+
+This tree is not insightful or pretty. After installing these packages and importing them:
+install.packages('rattle')
+install.packages('rpart.plot')
+install.packages('RColorBrewer')
+We can render a nicer looking tree that's somewhat easier to interpret.
+
+```{r}
+library(rattle)
+library(rpart.plot)
+library(RColorBrewer)
+fancyRpartPlot(fit)
+```
+
+Next we can make our prediction and submit.
+
+```{r}
+Prediction <- predict(fit, test, type = "class")
+submit <- data.frame(PassengerId = test$PassengerId, Survived = Prediction)
+write.csv(submit, file = "titanicdtree.csv", row.names = FALSE)
+```
+
+Now we have a score of .78469!
+
+In the next part, we see what overfitting looks like. This is when a model technically performs better on a training set than another simpler model, but does worse on the actual training set.
+
+```{r}
+fit <- rpart(Survived ~ Pclass + Sex + Age + SibSp + Parch + Fare + Embarked,
+               data=train,
+               method="class", 
+               control=rpart.control(minsplit=2, cp=0))
+fancyRpartPlot(fit)
+```
+
+If we were to submit this tree, we would get a score of .74163, which is worse than our much simpler tree.
+
+Let's play around with some of the controls of rpart/
+```{r}
+fit <- rpart(Survived ~ Pclass + Sex + Age + SibSp + Parch + Fare + Embarked,
+               data=train,
+               method="class",
+               control=rpart.control(minsplit = 2, cp = 0.005))
+new.fit <- prp(fit,snip=TRUE)$obj
+fancyRpartPlot(new.fit)
+```
+
+Let's see if there's an improvement with this one.
+
+```{r}
+Prediction <- predict(fit, test, type = "class")
+submit <- data.frame(PassengerId = test$PassengerId, Survived = Prediction)
+write.csv(submit, file = "titanicdtree.csv", row.names = FALSE)
+```
+
+I got a score of .7799, which is not an improvement. Let's try one more time.
+
+```{r}
+fit <- rpart(Survived ~ Pclass + Sex + Age + SibSp + Parch + Fare + Embarked,
+               data=train,
+               method="class",
+               control=rpart.control(minsplit = 2, cp = 0.001, xval = 1))
+new.fit <- prp(fit,snip=TRUE)$obj
+fancyRpartPlot(new.fit)
+```
+
+Probably still some overfitting going on, but let's give it a shot.
+
+```{r}
+Prediction <- predict(fit, test, type = "class")
+submit <- data.frame(PassengerId = test$PassengerId, Survived = Prediction)
+write.csv(submit, file = "titanicdtree.csv", row.names = FALSE)
+```
+
+Score is .75598, which is worse than the tutorial overfitting example and my previous attempt to reduce overfitting.

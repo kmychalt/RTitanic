@@ -1,0 +1,50 @@
+```{r}
+install.packages('party')
+```
+
+```{r}
+library(party)
+```
+
+We set the seed again for consistent results and start the model in a similar way to before with the Random Forest model (had to reset R Studio as it stopped responding, so re-importing libraries):
+
+```{r}
+setwd("~/RStudio/Titanic")
+library(readr)
+train <- read_csv("~/RStudio/Titanic/train.csv")
+library(party)
+
+#need Title column, creating here:
+train$Title <- sapply(train$Name, FUN=function(x) {strsplit(x, split='[,.]')[[1]][2]})
+
+#also need FamilySize:
+train$FamilySize <- train$SibSp + train$Parch + 1
+
+#also need Surname:
+train$Surname <- sapply(train$Name, FUN=function(x) {strsplit(x, split='[,.]')[[1]][1]})
+
+#also need FamilyID:
+train$FamilyID <- paste(as.character(train$FamilySize), train$Surname, sep="")
+```
+
+```{r}
+#convert char to factor:
+train$Name <-as.factor(train$Name)
+train$Sex <-as.factor(train$Sex)
+train$Ticket <-as.factor(train$Ticket)
+train$Cabin <-as.factor(train$Cabin)
+train$Embarked <-as.factor(train$Embarked)
+train$FamilyID <- as.factor(train$FamilyID)
+train$Title <-as.factor(train$Title)
+train$Surname <-as.factor(train$Surname)
+```
+
+```{r}
+set.seed(415)
+fit <- cforest(as.factor(Survived) ~ Pclass + Sex + Age + SibSp + Parch + Fare + Embarked + Title + FamilySize + FamilyID,
+    data = train, 
+    controls=cforest_unbiased(ntree=2000, mtry=3))
+```
+
+My computer seems unable to run the above code, possibly due to performance issues. I will have to load this on another computer with better performance.
+

@@ -111,3 +111,275 @@ write.csv(submit, file = "titanicdtree.csv", row.names = FALSE)
 ```
 
 Score is .75598, which is worse than the tutorial overfitting example and my previous attempt to reduce overfitting.
+
+Next let's learn some feature engineering
+
+Here, we merge the two datasets together so that we can perform the same operations on them. This makes a new dataframe called combi.
+```{r}
+test$Survived <- NA
+combi <- rbind(train, test)
+```
+
+For this section, we're going to take into account the titles of the passengers. Passengers with 'Countess' are probably more likely to survive than many 'Master's, or at least have a better chance of surviving.
+
+```{r}
+combi$Name <- as.character(combi$Name)
+combi$Name[1]
+```
+
+Now we have just text. Let's take apart the string.
+
+```{r}
+strsplit(combi$Name[1], split='[,.]')
+```
+
+Those symbols in the brackets are part of what's called a regular expression. Here, they told the function where to split the string.
+
+The output gave us the first entry, but we can request it by doing this:
+
+```{r}
+strsplit(combi$Name[1], split='[,.]')[[1]]
+```
+
+We can extract the title by adding the index number 2 at the end:
+
+```{r}
+strsplit(combi$Name[1], split='[,.]')[[1]]
+```
+
+We can make Title a new entry in our dataframe by using this method to extract each title from every name and inputting it into the new entry column.
+
+```{r}
+combi$Title <- sapply(combi$Name, FUN=function(x) {strsplit(x, split='[,.]')[[1]][2]})
+```
+
+Let's clean up this column by replacing the spaces with nothing.
+
+```{r}
+combi$Title <- sub(' ', '', combi$Title)
+```
+
+Now we can take a look at what titles we have in our data set, and how many of each.
+
+```{r}
+table(combi$Title)
+```
+
+Mlle and Mme are pretty similar titles, we can combine them into one category by doing this:
+
+```{r}
+combi$Title[combi$Title %in% c('Mme', 'Mlle')] <- 'Mlle'
+```
+
+We can do this with more titles to simplify things further.
+
+```{r}
+combi$Title[combi$Title %in% c('Capt', 'Don', 'Major', 'Sir')] <- 'Sir'
+combi$Title[combi$Title %in% c('Dona', 'Lady', 'the Countess', 'Jonkheer')] <- 'Lady'
+```
+
+Then we just need to convert the variable type back to factor.
+
+```{r}
+combi$Title <- factor(combi$Title)
+```
+
+Now we are going to take into account family size as it is reasonable to assume that larger families may have trouble gathering all of their members in time.
+
+```{r}
+combi$FamilySize <- combi$SibSp + combi$Parch + 1
+```
+
+We can take into account specific families by extracting an individual's last name with the number of people in their family, as it is highly unlikely that on a small ship, that this ID would be the same as someone else's ID.
+
+```{r}
+combi$Surname <- sapply(combi$Name, FUN=function(x) {strsplit(x, split='[,.]')[[1]][1]})
+```
+
+We can append the surname to the number of family members by converting the FamilySize to string and 'paste'ing them together with nothing inbetween (sep="").
+
+```{r}
+combi$FamilyID <- paste(as.character(combi$FamilySize), combi$Surname, sep="")
+```
+
+Three individuals on board with the last name Johnson and no other family members on board will cause problems, so we will lump people with these small families into one category.
+
+```{r}
+combi$FamilyID[combi$FamilySize <= 2] <- 'Small'
+```
+
+```{r}
+table(combi$FamilyID)
+```
+
+We're still getting repeats, so we're going to clean this up. We're going to start by putting the table above into its own dataframe.
+
+```{r}
+famIDs <- data.frame(table(combi$FamilyID))
+```
+
+This is to show only those small families. We then need to overwrite any family IDs in our dataset for groups that were not correctly identified and finally convert it to a factor:
+
+```{r}
+famIDs <- famIDs[famIDs$Freq <= 2,]
+combi$FamilyID[combi$FamilyID %in% famIDs$Var1] <- 'Small'
+combi$FamilyID <- factor(combi$FamilyID)
+```
+
+Now its time to split up combi into train and test dataframes and make our prediction.
+
+```{r}
+train <- combi[1:891,]
+test <- combi[892:1309,]
+fit <- rpart(Survived ~ Pclass + Sex + Age + SibSp + Parch + Fare + Embarked + Title + FamilySize + FamilyID,
+               data=train, 
+               method="class")
+Prediction <- predict(fit, test, type = "class")
+submit <- data.frame(PassengerId = test$PassengerId, Survived = Prediction)
+write.csv(submit, file = "titanicdtree.csv", row.names = FALSE)
+fancyRpartPlot(fit)
+```
+
+Score: .79426, a new high!
+
+For our next section we're going to use Random Forests to find the best prediction. Random Forests don't deal with NA's very well, so we're going to clean up the data. Let's start by looking at a summary of Age.
+
+```{r}
+summary(combi$Age)
+```
+
+Next we're going to grow a tree with the Ages that are available and then replace the ones that are not.
+
+```{r}
+Agefit <- rpart(Age ~ Pclass + Sex + SibSp + Parch + Fare + Embarked + Title + FamilySize,
+                  data=combi[!is.na(combi$Age),], 
+                  method="anova")
+combi$Age[is.na(combi$Age)] <- predict(Agefit, combi[is.na(combi$Age),])
+```
+
+Now let's see a summary of where we are at.
+
+```{r}
+summary(combi)
+```
+```{r}
+summary(combi$Age)
+```
+```{r}
+summary(combi)
+```
+
+```{r}
+summary(combi$Embarked)
+```
+```{r}
+combi$Embarked <- as.factor(combi$Embarked)
+summary(combi$Embarked)
+```
+```{r}
+combi$Name <- as.factor(combi$Name)
+combi$Sex <- as.factor(combi$Sex)
+combi$Cabin <- as.factor(combi$Cabin)
+combi$Ticket <- as.factor(combi$Ticket)
+combi$Surname <- as.factor(combi$Surname)
+summary(combi)
+```
+
+Now that we have everything converted to factor, we can take a good look at it. There are a few columns that are a problem. We'll start with Embarked because it has two blanks.
+
+```{r}
+#the code in the tutorial did not work. It went as follows:
+#which(combi$Embarked == '')
+
+#I found this to be a working solution:
+which(is.na(combi$Embarked))
+```
+
+Now we have the indexes of the blank fields. We can replace them with an "S" (I'm honestly not sure what the letters of this column mean)
+
+```{r}
+combi$Embarked[c(62, 830)] = "S"
+summary(combi$Embarked)
+```
+
+The next problem we have to tidy up is the Fare column.
+
+```{r}
+summary(combi$Fare)
+```
+
+We're going to replace this one entry with the average of the other Fares.
+
+```{r}
+which(is.na(combi$Fare))
+```
+```{r}
+combi$Fare[1044] <- median(combi$Fare, na.rm=TRUE)
+summary(combi$Fare)
+```
+
+Now that we've cleared up the NA's, there is another restriction that we have to worry about. Random Forests in R can only digest factors up to 32 levels, and our FamilyID is much more than 32. "We could take two paths forward here, either change these levels to their underlying integers (using the unclass() function) and having the tree treat them as continuous variables, or manually reduce the number of levels to keep it under the threshold." We're going to do the second option. We're going to make a new column and convert it to characater instead of factor. Then we can increase our cutoff for small families to 3 instead of 2. Then we convert it back to a factor.
+
+```{r}
+combi$FamilyID2 <- combi$FamilyID
+combi$FamilyID2 <- as.character(combi$FamilyID2)
+combi$FamilyID2[combi$FamilySize <= 3] <- 'Small'
+combi$FamilyID2 <- factor(combi$FamilyID2)
+```
+
+```{r}
+summary(combi$FamilyID2)
+```
+
+See? Now we're down to 22 levels. Now let's install Random Forests and build our trees.
+
+```{r}
+install.packages('randomForest')
+library(randomForest)
+```
+
+The Random Forest process has two sources of randomness, so its a good idea to set the seen in R before we start so that the results are reproducible.
+
+```{r}
+set.seed(415)
+```
+
+Ok, let's run the model.
+
+```{r}
+fit <- randomForest(as.factor(Survived) ~ Pclass + Sex + Age + SibSp + Parch + Fare + Embarked + Title + FamilySize + FamilyID2,
+                      data=train, 
+                      importance=TRUE, 
+                      ntree=2000)
+varImpPlot(fit)
+```
+
+It seems the tutorial did not split the data again and update the data frames. We get this error because the model is trying to build itself off of train and train does not have a FamilyID2 column. We're going to do that now, and then run it again.
+
+```{r}
+train <- combi[1:891,]
+test <- combi[892:1309,]
+fit <- randomForest(as.factor(Survived) ~ Pclass + Sex + Age + SibSp + Parch + Fare + Embarked + Title + FamilySize + FamilyID2,
+                      data=train, 
+                      importance=TRUE, 
+                      ntree=2000)
+varImpPlot(fit)
+```
+
+Excellent. "importance = TRUE" allows us to inspect variable importance, and "ntree = 2000" is the nunmber of trees that we would like to build. Let's go ahead and make our submission.
+
+```{r}
+Prediction <- predict(fit, test)
+submit <- data.frame(PassengerId = test$PassengerId, Survived = Prediction)
+write.csv(submit, file = "titanicforest.csv", row.names = FALSE)
+```
+
+Score is .77512, which is not an improvement! "But let's not give up yet. There's more than one ensemble model. Let's try a forest of conditional inference trees. They make their decisions in slightly different ways, using a statistical test rather than a purity measure, but the basic construction of each tree is fairly similar."
+
+Continued in titanicrforest.Rmd
+
+
+
+
+
+
